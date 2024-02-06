@@ -1,0 +1,66 @@
+version: '3.9'
+
+services:
+  api: &main_app
+    build:
+      context: .
+      dockerfile: ./deploy/Dockerfile
+      target: prod
+    image: weeho_backend:${WEEHO_BACKEND_VERSION:-latest}
+    restart: always
+    env_file:
+    - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      WEEHO_BACKEND_HOST: 0.0.0.0
+      WEEHO_BACKEND_DB_HOST: weeho_backend-db
+      WEEHO_BACKEND_DB_PORT: 3306
+      WEEHO_BACKEND_DB_USER: weeho_backend
+      WEEHO_BACKEND_DB_PASS: weeho_backend
+      WEEHO_BACKEND_DB_BASE: weeho_backend
+
+  taskiq-worker:
+    <<: *main_app
+    labels: []
+    command:
+    - taskiq
+    - worker
+    - weeho_backend.tkq:broker
+
+  db:
+    image: bitnami/mysql:8.0.30
+    hostname: weeho_backend-db
+    restart: always
+    environment:
+      MYSQL_ROOT_USER: "weeho_backend"
+      MYSQL_ROOT_PASSWORD: "weeho_backend"
+      MYSQL_DATABASE: "weeho_backend"
+      MYSQL_AUTHENTICATION_PLUGIN: "mysql_native_password"
+    healthcheck:
+      test: mysqladmin ping -h localhost
+      interval: 10s
+      timeout: 5s
+      retries: 40
+    volumes:
+    - weeho_backend-db-data:/bitnami/mysql/data
+
+  migrator:
+    image: weeho_backend:${WEEHO_BACKEND_VERSION:-latest}
+    restart: "no"
+    environment:
+      WEEHO_BACKEND_DB_HOST: weeho_backend-db
+      WEEHO_BACKEND_DB_PORT: 3306
+      WEEHO_BACKEND_DB_USER: weeho_backend
+      WEEHO_BACKEND_DB_PASS: weeho_backend
+      WEEHO_BACKEND_DB_BASE: weeho_backend
+    depends_on:
+      db:
+        condition: service_healthy
+
+
+
+volumes:
+  weeho_backend-db-data:
+    name: weeho_backend-db-data
